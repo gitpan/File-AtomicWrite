@@ -1,3 +1,5 @@
+# -*- Perl -*-
+#
 # Like IO::AtomicWrite, except uses File::Temp to create the temporary
 # file, and offers various degrees of more paranoid write handling, and
 # means to set Unix file permissions and ownerships on the resulting
@@ -20,10 +22,12 @@ use File::Basename qw(dirname);
 use File::Path qw(mkpath);
 use File::Temp qw(tempfile);
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 # Default options
 my %default_params = ( template => ".tmp.XXXXXXXX", MKPATH => 0 );
+
+my ( $tmp_fh, $tmp_filename );
 
 # Class method that accepts output filename, perhaps optional tmp file
 # template, and a filehandle or scalar ref, and handles all the details
@@ -36,14 +40,11 @@ sub write_file {
     croak("missing 'input' option");
   }
 
-  my ( $params_ref, $digest, $tmp_fh, $tmp_filename ) = _init($user_params);
+  my ( $params_ref, $digest ) = _init($user_params);
 
   # Attempt cleanup if things go awry
-  local $SIG{TERM} = sub {
-    # recommended by perlport(1) prior to unlink/rename calls
-    close($tmp_fh) if defined $tmp_fh;
-    unlink($tmp_filename) if defined $tmp_filename;
-  };
+  local $SIG{TERM} = \&_cleanup;
+  local $SIG{INT}  = \&_cleanup;
 
   my $input_ref = ref $params_ref->{input};
   unless ( $input_ref eq 'SCALAR' or $input_ref eq 'GLOB' ) {
@@ -54,11 +55,7 @@ sub write_file {
   if ( $input_ref eq 'SCALAR' ) {
     unless ( print $tmp_fh $$input ) {
       my $save_errstr = $!;
-
-      # recommended by perlport(1) prior to unlink/rename calls
-      close($tmp_fh) if defined $tmp_fh;
-      unlink($tmp_filename) if defined $tmp_filename;
-
+      _cleanup();
       croak("error printing to temporary file: $save_errstr\n");
     }
     if ( exists $params_ref->{CHECKSUM}
@@ -70,11 +67,7 @@ sub write_file {
     while ( my $line = <$input> ) {
       unless ( print $tmp_fh $line ) {
         my $save_errstr = $!;
-
-        # recommended by perlport(1) prior to unlink/rename calls
-        close($tmp_fh) if defined $tmp_fh;
-        unlink($tmp_filename) if defined $tmp_filename;
-
+        _cleanup();
         croak("error printing to temporary file: $save_errstr\n");
       }
 
@@ -96,18 +89,18 @@ sub new {
   croak("option 'input' only for write_file class method")
     if exists $user_param->{input};
 
-  @{$self}{qw(_params _digest _tmp_fh _tmp_filename)} = _init($user_param);
+  @{$self}{qw(_params _digest)} = _init($user_param);
 
   bless $self, $class;
   return $self;
 }
 
 sub fh {
-  return shift->{_tmp_fh};
+  return $tmp_fh;
 }
 
 sub filename {
-  return shift->{_tmp_filename};
+  return $tmp_filename;
 }
 
 sub checksum {
@@ -124,15 +117,18 @@ sub checksum {
 
 sub commit {
   my $self = shift;
-  _resolve( @{$self}{qw(_params _digest _tmp_fh _tmp_filename)} );
+  _resolve( @{$self}{qw(_params _digest)} );
 }
 
 sub DESTROY {
-  my $self = shift;
+  _cleanup();
+}
 
+# For when (if) things go awry
+sub _cleanup {
   # recommended by perlport(1) prior to unlink/rename calls
-  close $self->{_tmp_fh} if defined $self->{_tmp_fh};
-  unlink $self->{_tmp_filename} if defined $self->{_tmp_filename};
+  close $tmp_fh if defined $tmp_fh;
+  unlink $tmp_filename if defined $tmp_filename;
 }
 
 sub _init {
@@ -166,7 +162,7 @@ sub _init {
     $params_ref->{tmpdir} = $params_ref->{_dir};
   }
 
-  my ( $tmp_fh, $tmp_filename ) = tempfile(
+  ( $tmp_fh, $tmp_filename ) = tempfile(
     $params_ref->{template},
     DIR    => $params_ref->{tmpdir},
     UNLINK => 0
@@ -179,7 +175,7 @@ sub _init {
     binmode($tmp_fh);
   }
 
-  return $params_ref, $digest, $tmp_fh, $tmp_filename;
+  return $params_ref, $digest;
 }
 
 sub _init_checksum {
@@ -201,10 +197,8 @@ sub _init_checksum {
 }
 
 sub _resolve {
-  my $params_ref   = shift;
-  my $digest       = shift;
-  my $tmp_fh       = shift;
-  my $tmp_filename = shift;
+  my $params_ref = shift;
+  my $digest     = shift;
 
   if ( exists $params_ref->{CHECKSUM}
     and !exists $params_ref->{checksum} ) {
@@ -221,16 +215,14 @@ sub _resolve {
 
   eval {
     if ( exists $params_ref->{min_size} ) {
-      _check_min_size( $tmp_fh, $params_ref->{min_size} );
+      _check_min_size( $params_ref->{min_size} );
     }
     if ( exists $params_ref->{CHECKSUM} ) {
-      _check_checksum( $tmp_fh, $params_ref->{checksum} );
+      _check_checksum( $params_ref->{checksum} );
     }
   };
   if ($@) {
-    # recommended by perlport(1) prior to unlink/rename calls
-    close($tmp_fh) if defined $tmp_fh;
-    unlink($tmp_filename) if defined $tmp_filename;
+    _cleanup();
     die $@;
   }
 
@@ -242,25 +234,38 @@ sub _resolve {
   # caller decide.
   close($tmp_fh) or die "problem closing filehandle: $!\n";
 
-  eval {
-    if ( exists $params_ref->{mode} ) {
-      _set_mode( $params_ref->{mode}, $tmp_filename );
-    }
+  # spare subsequent useless close attempts, if any
+  undef $tmp_fh;
 
-    if ( exists $params_ref->{owner} ) {
-      _set_ownership( $params_ref->{owner}, $tmp_filename );
+  if ( exists $params_ref->{mode} ) {
+    croak("invalid mode data\n")
+      if !defined $params_ref->{mode}
+        or $params_ref->{mode} !~ m/^\d+$/;
+
+    my $count = chmod( $params_ref->{mode}, $tmp_filename );
+    if ( $count != 1 ) {
+      my $save_errstr = $!;
+      _cleanup();
+      die "unable to chmod temporary file: $save_errstr\n";
     }
-  };
-  if ($@) {
-    unlink $tmp_filename;
-    die $@;
+  }
+
+  if ( exists $params_ref->{owner} ) {
+    eval { _set_ownership( $params_ref->{owner}, $tmp_filename ); };
+    if ($@) {
+      _cleanup();
+      die $@;
+    }
   }
 
   unless ( rename( $tmp_filename, $params_ref->{file} ) ) {
     my $save_errstr = $!;
-    unlink $tmp_filename;
+    _cleanup();
     croak "unable to rename file: $save_errstr\n";
   }
+
+  # spare subsequent useless unlink attempts, if any
+  undef $tmp_filename;
 
   return 1;
 }
@@ -282,7 +287,6 @@ sub _mkpath {
 }
 
 sub _check_checksum {
-  my $tmp_fh   = shift;
   my $checksum = shift;
 
   seek( $tmp_fh, 0, 0 )
@@ -301,7 +305,6 @@ sub _check_checksum {
 }
 
 sub _check_min_size {
-  my $tmp_fh   = shift;
   my $min_size = shift;
 
   # Must seek, as OO method allows the fh or filename to be passed off
@@ -314,21 +317,6 @@ sub _check_min_size {
     die("tmp fh tell() error: $!\n");
   } elsif ( $written < $min_size ) {
     croak("bytes written failed to exceed min_size required\n");
-  }
-
-  return 1;
-}
-
-# Accepts file permission (mode), filename. croak()s on problems.
-sub _set_mode {
-  my $mode     = shift;
-  my $filename = shift;
-
-  croak("invalid mode data\n") if !defined $mode or $mode !~ m/^\d+$/;
-
-  my $count = chmod( $mode, $filename );
-  if ( $count != 1 ) {
-    die "unable to chmod temporary file\n";
   }
 
   return 1;
@@ -386,7 +374,7 @@ File::AtomicWrite - writes files atomically via rename()
 
   use File::AtomicWrite ();
 
-  # standalone method: requires filename and
+  # Standalone method: requires filename and
   # input data (filehandle or scalar ref)
   File::AtomicWrite->write_file(
     { file  => 'data.dat',
@@ -416,17 +404,17 @@ File::AtomicWrite - writes files atomically via rename()
 
 =head1 DESCRIPTION
 
-This module writes files out atomically by first creating a temporary
-filehandle, then using the rename() function to overwrite the target
-file. The module optionally supports size tests on the output file
-(to help avoid a zero byte C<passwd> file and the resulting
-headaches, for example).
+This module offers atomic file writes via a temporary file created in
+the same directory (and therefore, probably the same partition) as the
+specified B<file>. After data has been written to the temporary file,
+the C<rename> call is used to replace the target B<file>. The module
+optionally supports various sanity checks (B<min_size>, B<CHECKSUM>)
+that help ensure the data is written without errors.
 
-Should anything go awry, the module will C<die> or C<croak> as
-appropriate. All error messages created by the module will end with a
-newline, though those from submodules (L<File::Temp|File::Temp>,
-L<File::Path>) may not. Therefore, all calls should be wrapped in
-eval blocks:
+Should anything go awry, the module will C<die> or C<croak>. All error
+messages created by the module will end with a newline, though those
+from submodules (L<File::Temp|File::Temp>, L<File::Path>) may not. All
+calls should be wrapped in eval blocks:
 
   eval {
     File::AtomicWrite->write_file(...);
@@ -436,7 +424,7 @@ eval blocks:
   }
 
 The module attempts to C<flush> and C<sync> the temporary filehandle
-prior to the C<rename()> call. This may cause portability problems. If
+prior to the C<rename> call. This may cause portability problems. If
 so, please let the author know. Also notify the author if false
 positives from the C<close> call are observed.
 
@@ -446,30 +434,30 @@ positives from the C<close> call are observed.
 
 =item C<write_file>
 
-Class method. Requires a hash reference that contains the B<input> and
-B<file> options. Performs the various required steps in a single method
-call. Only if all checks pass will the B<input> data be moved to the
-B<file> file via C<rename()>. If not, the module will throw an error,
-and attempt to cleanup any temporary files created.
+Class method. Requires a hash reference that contains at minimum both
+the B<input> and B<file> options. Performs the various required steps in
+a single method call. Only if all checks pass will the B<input> data be
+moved to the B<file> file via C<rename>. If not, the module will throw
+an error, and attempt to cleanup any temporary files created.
 
 See L<"OPTIONS"> for details on the various required and optional
 values that can be passed to C<write_file> in a hash reference.
 
 =item C<new>
 
-Takes same options as C<write_file> (excepting the C<input> option),
+Takes the same options as C<write_file> (excepting the C<input> option),
 returns an object.
 
 In the event a rollback is required, C<undef> the File::AtomicWrite
 object. The object destructor should then unlink the temporary file.
-However, should the process receive a TERM or some other catchable
+However, should the process receive a TERM, INT, or some other catchable
 signal that causes it to exit, the cleanup will not be run. This edge
-case will need to be handled by the caller. See perlipc(1) for more
+case will need to be handled by the caller. Consult perlipc(1) for more
 information on signal handling.
 
-  my $aw = File::AtomicWrite->new({file => 'somefile'});
-
-  $SIG{TERM} = { undef $aw };
+  my $aw     = File::AtomicWrite->new({file => 'somefile'});
+  $SIG{TERM} = sub { undef $aw };
+  $SIG{INT}  = sub { undef $aw };
   ...
 
 =item C<fh>
@@ -484,7 +472,7 @@ Instance method, returns the file name of the temporary file.
 
 Instance method. Takes a single argument that should contain the
 L<Digest::SHA1|Digest::SHA1> C<hexdigest> of the data written to the
-temporary file. Enables the C<CHECKSUM> option.
+temporary file. Enables the B<CHECKSUM> option.
 
 =item C<commit>
 
@@ -496,8 +484,8 @@ If these pass, the temporary file will be renamed to the real filename.
 
 =head1 OPTIONS
 
-The C<write_file> method accepts a number of options, supplied via a
-hash reference:
+The C<write_file> and C<new> methods accept a number of options,
+supplied via a hash reference:
 
 =over 4
 
@@ -509,13 +497,16 @@ will be written into the parent directory of the B<file> path. This
 default can be changed by using the B<tmpdir> option.
 
 If the B<MKPATH> option is true, the module will attempt to create any
-missing directories, instead of issuing an error.
+missing directories. If the B<MKPATH> option is false or not set, the
+module will throw an error should any parent directories of the B<file>
+not exist.
 
 =item B<input>
 
-Mandatory. Scalar reference, or otherwise some filehandle reference
-that can be looped over via C<E<lt>E<gt>>. Supplies the data to be
-written to B<file>.
+Mandatory for the C<write_file> method, illegal for the C<new>
+method. Scalar reference, or otherwise some filehandle reference that
+can be looped over via C<E<lt>E<gt>>. Supplies the data to be written
+to B<file>.
 
 =item B<template>
 
@@ -532,7 +523,7 @@ not, the module throws an error.
 =item B<mode>
 
 Accepts a Unix mode for C<chmod> to be applied to the file. Usual
-throwing of error. NOTE: depending on the source of the mode, C<oct()>
+throwing of error. NOTE: depending on the source of the mode, C<oct>
 may be first required to convert it into an octal number:
 
   my $orig_mode = (stat $source_file)[2] & 07777;
@@ -541,7 +532,7 @@ may be first required to convert it into an octal number:
   my $mode = '0644';
   ...->write_file({ ..., mode => oct($mode) });
 
-The module does not change C<umask()>, nor is there a means to specify
+The module does not change C<umask>, nor is there a means to specify
 the permissions on directories created if B<MKPATH> is set.
 
 =item B<owner>
@@ -559,7 +550,7 @@ If set to a directory, the temporary file will be written to this
 directory instead of by default to the parent directory of the target
 B<file>. If the B<tmpdir> is on a different partition than the parent
 directory for B<file>, or if anything else goes awry, the module will
-throw an error.
+throw an error, as rename(2) cannot operate across partition boundaries.
 
 This option is advisable when writing files to include directories such
 as C</etc/logrotate.d>, as the programs that read include files from
@@ -579,22 +570,26 @@ the caller.
 
 If true, L<Digest::SHA1|Digest::SHA1> will be used to checksum the data
 read back from the disk against the checksum derived from the data
-written out to the temporary file. See also the B<checksum> option.
+written out to the temporary file.
+
+Use the B<checksum> option (or C<checksum> method) to supply a
+L<Digest::SHA1|Digest::SHA1> C<hexdigest> checksum. This will spare the
+module the task of computing the checksum on the data being written.
 
 =item B<BINMODE>
 
-If true, C<binmode()> is set on the temporary filehandle prior to
-writing the B<input> data to it.
+If true, C<binmode> is set on the temporary filehandle prior to
+writing the B<input> data to it. Default is note to set C<binmode>.
 
 =item B<MKPATH>
 
-If true (default is false), attempt to create the parent directory of
+If true (default is false), attempt to create the parent directories of
 B<file> should that directory not exist. If false, and the parent
 directory does not exist, the module throws an error. If the directory
 cannot be created, the module throws an error.
 
 If true, this option will also attempt to create the B<tmpdir>
-directory, if set.
+directory, if that option is set.
 
 =back
 
@@ -614,7 +609,8 @@ http://github.com/thrig/File-AtomicWrite/tree/master
 =head2 Known Issues
 
 See perlport(1) for various portability problems possible with the
-C<rename()> call.
+C<rename> call. Consult rename(2) or equivalent for the system for any
+caveats about this system call.
 
 =head1 SEE ALSO
 
