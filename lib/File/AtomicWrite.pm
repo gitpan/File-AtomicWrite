@@ -22,7 +22,7 @@ use File::Basename qw(dirname);
 use File::Path qw(mkpath);
 use File::Temp qw(tempfile);
 
-our $VERSION = '0.93';
+our $VERSION = '0.94';
 
 # Default options
 my %default_params = ( template => ".tmp.XXXXXXXX", MKPATH => 0 );
@@ -207,11 +207,10 @@ sub _resolve {
 
   # Help the bits reach the disk
   $tmp_fh->flush() or die "flush() error: $!\n";
-  # TODO "not implemented on all platforms" per IO::Handle docs - if
-  # this causes false failures, will need to wrap in an eval block and
-  # only pass sync errors, or also create an option that lets the caller
-  # decide whether these are performed.)
-  $tmp_fh->sync() or die "sync() error: $!\n";
+  # TODO may need eval or exclude on other platforms
+  if ( $^O !~ m/Win32/ ) {
+    $tmp_fh->sync() or die "sync() error: $!\n";
+  }
 
   eval {
     if ( exists $params_ref->{min_size} ) {
@@ -620,7 +619,7 @@ L<File::Temp|File::Temp>, L<File::Path|File::Path>, L<File::Basename|File::Basen
 
 Alternatives, depending on the need, include:
 
-L<IO::Atomic|IO::Atomic>, L<File::Transaction|File::Transaction>, L<File::Transaction::Atomic|File::Transaction::Atomic>
+L<IO::Atomic|IO::Atomic>, L<File::Transaction|File::Transaction>, L<File::Transaction::Atomic|File::Transaction::Atomic>, L<Directory::Transactional|Directory::Transactional>
 
 =head1 AUTHOR
 
