@@ -32,4 +32,4 @@ resources:
   bugtracker: https://rt.cpan.org/Public/Dist/Display.html?Name=File-AtomicWrite
   license: http://dev.perl.org/licenses/artistic.html
   repository: http://github.com/thrig/File-AtomicWrite
-version: 1.02
+version: 1.03
