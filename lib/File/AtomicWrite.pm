@@ -5,7 +5,7 @@
 # means to set Unix file permissions and ownerships on the resulting
 # file. Run perldoc(1) on this module for more information.
 #
-# Copyright 2009-2010 by Jeremy Mates.
+# Copyright 2009-2010,2012 by Jeremy Mates.
 #
 # This module is free software; you can redistribute it and/or modify it
 # under the Artistic license.
@@ -21,7 +21,7 @@ use File::Path qw(mkpath);
 use File::Temp qw(tempfile);
 use IO::Handle;
 
-our $VERSION = '1.06';    # this is a number, not a name
+our $VERSION = '1.07';    # this is a number, not a name
 
 # Default options
 my %default_params = ( MKPATH => 0, template => ".tmp.XXXXXXXXX" );
@@ -717,7 +717,7 @@ http://github.com/thrig/File-AtomicWrite/tree/master
 See perlport(1) for various portability problems possible with the
 C<rename> call. Consult rename(2) or equivalent for the system for any
 caveats about this system call. Note that rename(2) is used heavily by
-common programs such as mv(1) and rsync.
+common programs such as mv(1) and C<rsync>.
 
 File hard links created by ln(1) will be broken by this module, as this
 module has no way of knowing whether any other files link to the inode
@@ -732,7 +732,14 @@ of the file being operated on:
   % ls -i afile*
   3725622 afile         3725607 afilehardlink
 
-Union mounts might also be a problem.
+Union or bind mounts might also be a problem, if what is actually some
+other filesystem is present between the temporary and final file
+locations.
+
+Some filesystems may also require a fsync call on a filehandle of the
+directory containing the file (see fsync(2) on RHEL, for example), to
+ensure that the directory data also reaches disk, in addition to the
+contents of the file.
 
 =head1 SEE ALSO
 
@@ -746,11 +753,11 @@ L<IO::Atomic>, L<File::Transaction>, L<File::Transaction::Atomic>, L<Directory::
 
 =head1 AUTHOR
 
-Jeremy Mates, E<lt>jmates@sial.orgE<gt>
+Jeremy Mates, E<lt>jmates@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright 2009-2010 by Jeremy Mates.
+Copyright 2009-2010,2012 by Jeremy Mates.
 
 This program is free software; you can redistribute it and/or modify it
 under the Artistic license.
