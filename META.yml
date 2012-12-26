@@ -8,7 +8,7 @@ configure_requires:
   ExtUtils::MakeMaker: 0
 dynamic_config: 1
 generated_by: 'ExtUtils::MakeMaker version 6.62, CPAN::Meta::Converter version 2.112150'
-license: unknown
+license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
   version: 1.4
@@ -25,4 +25,8 @@ requires:
   File::Temp: 0.18
   IO::Handle: 0
   Test::More: 0
-version: 1.07
+resources:
+  homepage: https://github.com/thrig/File-AtomicWrite
+  license: http://dev.perl.org/licenses/
+  repository: https://github.com/thrig/File-AtomicWrite
+version: 1.09
