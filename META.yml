@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               File-AtomicWrite
-version:            1.10
+version:            1.11
 abstract:           writes files atomically via rename()
 author:
     - Jeremy Mates <jmates@cpan.org>
