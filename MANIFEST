@@ -10,3 +10,4 @@ t/020-oo.t
 t/030-mix.t
 t/pod.t
 lib/File/AtomicWrite.pm
+META.json                                Module JSON meta-data (added by MakeMaker)
