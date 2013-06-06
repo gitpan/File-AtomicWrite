@@ -25,8 +25,9 @@ requires:
   File::Temp: 0.18
   IO::Handle: 0
   Test::More: 0
+  perl: 5
 resources:
   homepage: https://github.com/thrig/File-AtomicWrite
   license: http://dev.perl.org/licenses/
   repository: https://github.com/thrig/File-AtomicWrite
-version: 1.13
+version: 1.14

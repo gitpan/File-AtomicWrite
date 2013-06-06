@@ -38,7 +38,8 @@
             "File::Spec" : "0",
             "File::Temp" : "0.18",
             "IO::Handle" : "0",
-            "Test::More" : "0"
+            "Test::More" : "0",
+            "perl" : "5"
          }
       }
    },
@@ -52,5 +53,5 @@
          "url" : "https://github.com/thrig/File-AtomicWrite"
       }
    },
-   "version" : "1.13"
+   "version" : "1.14"
 }
