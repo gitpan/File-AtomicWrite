@@ -1,0 +1,41 @@
+This file contains message digests of all files listed in MANIFEST,
+signed via the Module::Signature module, version 0.73.
+
+To verify the content in this distribution, first make sure you have
+Module::Signature installed, then type:
+
+    % cpansign -v
+
+It will check each file's integrity, as well as the signature's
+validity.  If "==> Signature verified OK! <==" is not displayed,
+the distribution may already have been compromised, and you should
+not run its Makefile.PL or Build.PL.
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA1
+
+SHA1 5af545c218bf29dd2f3c9202e292c2116254d035 Changes
+SHA1 846252ea9428ead5a9f387bcd843958f5759609c LICENSE
+SHA1 ba62943b4e4fcc82df03f6e2e21d9ab253a5d95c MANIFEST
+SHA1 318f3176fff18f0e3bf0343cbe83110b1e200517 META.json
+SHA1 55c989b8929be5dc688fcf2bfa5b70f656c13bdc META.yml
+SHA1 f2ce37b87b0285d90ae36e0571f73ccba4835d0d Makefile.PL
+SHA1 3b4701a38debf2b056f2d3a16a49d3f53327fefe README
+SHA1 ae5eea8662843c3e57b0c6695480c846ff5a3330 eg/cleanup-test
+SHA1 18320cb49e944758e2994a3d4c9540b0bf8d7fb5 lib/File/AtomicWrite.pm
+SHA1 2a1ee622a029d60fc7ef4f539fabe8237ae814e7 t/001-init.t
+SHA1 500f5dfcea9c9749896a8a05dbaf4f801f4f7d35 t/010-write_file.t
+SHA1 4ac7df6b76879dd90e133087348814b1abea5307 t/020-oo.t
+SHA1 f6e4d4753406e7078ecb9d3f5fc82f1917e3523b t/030-mix.t
+SHA1 3ef65383d82f059f56f43236663119c01974decb t/pod.t
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1
+
+iQEcBAEBAgAGBQJTYw+zAAoJEDTEVWqwTuCU4NkIAJeNXMDvwfLtjsbV3dh2qtl6
+CskAk0AgND6dQ8rkd90XxJZxIw6aWmkUYR81uL1JkRAvu4kmue7CchJ5/2sVCHZE
+g1YbtcwVnT93qHCe9hVqLRKRfNLUiDAdNehdwTwerUdlzsOIo/P9wsOdXf3R9zNM
+l7JnfbqbfXUD4WCPnE0e1lukg5Uy7/m1s1hJfnAD+6fm1TNK1AA6zvu+1KHqZrE5
+Ut6l2r4+0I6dIWKrlYnoB9IPNA/A7480i1lPPAVUBKFcs3/TMWoASmya5pHLfn/+
+XFEcP7gdPpb/kMgXS7OLgWOpFHJkUmwIzmiWvQq3kXhqnwNeFiOLHTJwZe/wmlY=
+=WdGU
+-----END PGP SIGNATURE-----
